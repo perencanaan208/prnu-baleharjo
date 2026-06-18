@@ -2258,62 +2258,101 @@
         // Fungsi-fungsi untuk baca/tulis data ke Google Spreadsheet
         // ============================================================
 
+        // ══════════════════════════════════════════════
+        // KONFIGURASI URL GAS — WAJIB DIISI
+        // Salin URL Deploy GAS Anda ke sini
+        // Cara: GAS Editor → Deploy → Manage Deployments → salin Web App URL
+        // ══════════════════════════════════════════════
+        const GAS_URL = 'GANTI_DENGAN_URL_GAS_ANDA';
+        // Contoh: 'https://script.google.com/macros/s/AKfy.../exec'
+
+        // Deteksi environment: true jika di dalam GAS iframe
         const GAS = typeof google !== 'undefined' && google.script && google.script.run;
+        // Mode external fetch: true jika di Vercel/GitHub Pages (bukan di GAS)
+        const GAS_EXTERNAL = !GAS && GAS_URL && GAS_URL !== 'GANTI_DENGAN_URL_GAS_ANDA';
+
+        /**
+         * Panggil fungsi GAS — otomatis pilih mode:
+         * - Di dalam GAS  → google.script.run (cepat, aman)
+         * - Di luar GAS   → fetch GET ke GAS URL dengan parameter action & payload
+         */
+        function gasCall(fnName, payload, onSuccess, onFail) {
+            onSuccess = onSuccess || function(){};
+            onFail    = onFail    || function(e){ console.warn('GAS error:', fnName, e); };
+
+            if (GAS || GAS_EXTERNAL) {
+                // Mode dalam GAS
+                var runner = gasCall('withFailureHandler', onFail, onSuccess);
+                if (payload !== undefined) runner[fnName](payload);
+                else runner[fnName]();
+            } else if (GAS_EXTERNAL) {
+                // Mode external — kirim via fetch POST ke GAS Web App
+                var url = GAS_URL;
+                var body = JSON.stringify({ action: fnName, payload: payload });
+                fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' }, // GAS butuh text/plain untuk doPost
+                    body: body,
+                    redirect: 'follow'
+                })
+                .then(function(r) { return r.text(); })
+                .then(function(text) {
+                    try {
+                        var parsed = JSON.parse(text);
+                        onSuccess(parsed.result !== undefined ? parsed.result : text);
+                    } catch(e) { onSuccess(text); }
+                })
+                .catch(function(e) { onFail(e.message || e); });
+            } else {
+                onFail('GAS tidak tersambung. Isi GAS_URL di kode.');
+            }
+        }
 
         function gasRun(fnName, args, onSuccess, onFail) {
-            if (!GAS) { if (onFail) onFail('Tidak terhubung ke GAS'); return; }
-            let runner = google.script.run
-                .withSuccessHandler(onSuccess || function(){})
-                .withFailureHandler(onFail || function(e){ console.warn('GAS error:', e); });
-            if (args !== undefined) runner[fnName](args);
-            else runner[fnName]();
+            gasCall(fnName, args, onSuccess, onFail);
         }
 
         // Simpan settings ke sheet Settings
         function syncSettings(settingsObj) {
-            if (!GAS) return;
+            if (!GAS && !GAS_EXTERNAL) return;
             const flat = {};
             Object.keys(settingsObj).forEach(function(ns) {
                 Object.keys(settingsObj[ns]).forEach(function(k) {
                     flat[ns + '.' + k] = String(settingsObj[ns][k]);
                 });
             });
-            gasRun('saveSettingsBatch', JSON.stringify(flat), function(res) {
+            gasCall('saveSettingsBatch', JSON.stringify(flat), function(res) {
                 if (res !== 'success') console.warn('saveSettingsBatch:', res);
             });
         }
 
-        // Fungsi utama: simpan perubahan yang relevan ke GAS
         function syncStateToBackend(dataType) {
-            // dataType: 'settings' | 'news' | 'finance' | 'pengurus' | 'inbox' | undefined (semua)
-            // localStorage sebagai cache lokal tetap disimpan
             try {
                 const cacheState = JSON.parse(JSON.stringify(AppState));
                 cacheState.isAdminLoggedIn = false;
                 localStorage.setItem('PRNU_BALEHARJO_STATE_CACHE', JSON.stringify(cacheState));
             } catch(e) {}
-            // Sinkronisasi ke GAS sudah dilakukan secara langsung di masing-masing handler
         }
 
         // Muat semua data dari Spreadsheet GAS
         function loadFromSpreadsheet(callback) {
-            if (!GAS) { callback(null); return; }
-            google.script.run
-                .withSuccessHandler(function(result) {
+            if (!GAS && !GAS_EXTERNAL) { callback(null); return; }
+            gasCall('loadAllData', undefined,
+                function(result) {
                     if (!result) { callback(null); return; }
                     try {
-                        var data = JSON.parse(result);
+                        var data = typeof result === 'string' ? JSON.parse(result) : result;
                         callback(data);
                     } catch(e) {
                         console.error('Parse error loadAllData:', e);
                         callback(null);
                     }
-                })
-                .withFailureHandler(function(e) {
+                },
+                function(e) {
                     console.warn('loadAllData gagal:', e);
                     callback(null);
-                })
-                .loadAllData();
+                }
+            );
         }
 
         // Terapkan data dari Spreadsheet ke AppState
@@ -2485,7 +2524,7 @@
             // Timeout fallback: jika GAS tidak respond dalam 8 detik, tutup splash tetap
             var splashTimeout = setTimeout(function() { hideSplash('Siap'); }, 8000);
 
-            if (GAS) {
+            if (GAS || GAS_EXTERNAL) {
                 var statusEl2 = document.getElementById('splashStatusText');
                 if (statusEl2) statusEl2.textContent = 'Menyinkronkan data…';
 
@@ -2592,7 +2631,7 @@
             renderPengurusHeader();
             syncStateToBackend();
 
-            if (!GAS) { showToast('Info kepengurusan diperbarui!'); return; }
+            if (!GAS && !GAS_EXTERNAL) { showToast('Info kepengurusan diperbarui!'); return; }
 
             var batch = {
                 'pengurus_hdr.tag':        ps.tag,
@@ -2600,8 +2639,7 @@
                 'pengurus_hdr.judul':      ps.judul,
                 'pengurus_hdr.subjudul':   ps.subjudul
             };
-            google.script.run
-                .withSuccessHandler(function(r){
+            gasCall('withSuccessHandler', function(r){
                     if (r === 'success') showToast('✓ Info & masa jabatan kepengurusan tersimpan!');
                     else showToast('⚠️ Gagal: ' + r);
                 })
@@ -2678,7 +2716,7 @@
             renderKontakContent();
             syncStateToBackend();
 
-            if (!GAS) { showToast('Kontak diperbarui (mode lokal)!'); return; }
+            if (!GAS && !GAS_EXTERNAL) { showToast('Kontak diperbarui (mode lokal)!'); return; }
 
             var batch = {
                 'kontak.judulForm':       ks.judulForm,
@@ -2695,8 +2733,7 @@
                 'kontak.kategoriList':    JSON.stringify(ks.kategoriList)
             };
 
-            google.script.run
-                .withSuccessHandler(function(r) {
+            gasCall('withSuccessHandler', function(r) {
                     if (r === 'success') showToast('✓ Pengaturan Kontak berhasil disimpan!');
                     else showToast('⚠️ Gagal simpan: ' + r);
                 })
@@ -3228,21 +3265,21 @@
                 submitBtn.innerHTML = `<span>Masuk ke Dashboard</span>`;
             };
 
-            if (typeof google !== 'undefined' && google.script && google.script.run) {
-                google.script.run.withSuccessHandler(function(isValid) {
-                    if (isValid) {
-                        successAuth();
-                    } else {
-                        failAuth();
+            if (GAS || GAS_EXTERNAL) {
+                gasCall('checkAdminCredentials', user + '|||' + pass,
+                    function(isValid) {
+                        if (isValid === true || isValid === 'true') { successAuth(); }
+                        else { failAuth(); }
+                    },
+                    function() {
+                        // Failback lokal jika GAS tidak merespons
+                        if (user === 'admin' && (pass === 'aswaja1926' || pass === 'admin')) {
+                            successAuth();
+                        } else {
+                            failAuth();
+                        }
                     }
-                }).withFailureHandler(function() {
-                    // Failback local
-                    if (user === 'admin' && (pass === 'aswaja1926' || pass === 'admin')) {
-                        successAuth();
-                    } else {
-                        failAuth();
-                    }
-                }).checkAdminCredentials(user, pass);
+                );
             } else {
                 if (user === 'admin' && (pass === 'aswaja1926' || pass === 'admin')) {
                     successAuth();
@@ -3386,7 +3423,7 @@
             renderHomepageContent();
             syncStateToBackend();
             // Simpan ke GAS Spreadsheet Sheet Settings
-            if (GAS) {
+            if (GAS || GAS_EXTERNAL) {
                 const settingsBatch = {
                     'homepage.heroTitle': AppState.homepageSettings.heroTitle,
                     'homepage.heroSubtitle': AppState.homepageSettings.heroSubtitle,
@@ -3395,8 +3432,7 @@
                     'homepage.agendaTitle': AppState.homepageSettings.agendaTitle,
                     'homepage.agendaLocation': AppState.homepageSettings.agendaLocation
                 };
-                google.script.run
-                    .withSuccessHandler(function(r){ if(r==='success') showToast('Beranda tersimpan ke Spreadsheet!'); })
+                gasCall('withSuccessHandler', function(r){ if(r==='success') showToast('Beranda tersimpan ke Spreadsheet!'); })
                     .withFailureHandler(function(e){ console.warn('saveSettings GAS:', e); })
                     .saveSettingsBatch(JSON.stringify(settingsBatch));
             }
@@ -3437,7 +3473,7 @@
             renderProfileContent();
             syncStateToBackend();
 
-            if (!GAS) { showToast('Profil diperbarui (mode lokal)!'); return; }
+            if (!GAS && !GAS_EXTERNAL) { showToast('Profil diperbarui (mode lokal)!'); return; }
 
             // ── STEP 1: Simpan data teks (tanpa foto) ──
             var batchTeks = {
@@ -3454,8 +3490,7 @@
                 'profile.fokus':            JSON.stringify(ps.fokus)
             };
 
-            google.script.run
-                .withSuccessHandler(function(r) {
+            gasCall('withSuccessHandler', function(r) {
                     if (r !== 'success') { showToast('⚠️ Gagal simpan data: ' + r); return; }
 
                     var fotoSrc = ps.profilImg || '';
@@ -3464,8 +3499,7 @@
                     // ── STEP 2: Simpan foto via savePhoto (chunking otomatis di GAS) ──
                     // savePhoto memecah base64 besar menjadi chunks < 44KB per cell
                     // getSettings() otomatis menggabungkan kembali saat web dibuka
-                    google.script.run
-                        .withSuccessHandler(function(r2) {
+                    gasCall('withSuccessHandler', function(r2) {
                             if (r2 === 'success') showToast('✓ Profil & foto berhasil disimpan!');
                             else showToast('⚠️ Foto gagal: ' + r2);
                         })
@@ -3588,9 +3622,8 @@
                 
                 renderPublicLayanan();
                 syncStateToBackend();
-                if (GAS) {
-                    google.script.run
-                        .withSuccessHandler(function(r){ if(r==='success') showToast('Data layanan tersimpan ke database!'); })
+                if (GAS || GAS_EXTERNAL) {
+                    gasCall('withSuccessHandler', function(r){ if(r==='success') showToast('Data layanan tersimpan ke database!'); })
                         .withFailureHandler(function(e){ console.warn('GAS layanan:', e); })
                         .saveSettingsBatch(JSON.stringify({ 'site.layanan': JSON.stringify(AppState.layanan) }));
                 } else {
@@ -3626,7 +3659,7 @@
             function saveBanomToGAS(imgBase64) {
                 renderPublicBanom();
                 syncStateToBackend();
-                if (!GAS) { showToast('Banom berhasil diperbarui!'); return; }
+                if (!GAS && !GAS_EXTERNAL) { showToast('Banom berhasil diperbarui!'); return; }
 
                 // ── STEP 1: Simpan data teks (tanpa foto) ──
                 var banomsTeks = {};
@@ -3639,8 +3672,7 @@
                     };
                 });
 
-                google.script.run
-                    .withSuccessHandler(function(r) {
+                gasCall('withSuccessHandler', function(r) {
                         if (r !== 'success') { showToast('⚠️ Gagal simpan data banom: ' + r); return; }
 
                         if (!imgBase64) { showToast('✓ Data banom tersimpan!'); return; }
@@ -3651,14 +3683,12 @@
 
                         if (imgBase64.startsWith('http')) {
                             // URL langsung → simpan di Settings biasa (pendek, aman)
-                            google.script.run
-                                .withSuccessHandler(function(r2){ if(r2==='success') showToast('✓ Foto banom tersimpan!'); })
+                            gasCall('withSuccessHandler', function(r2){ if(r2==='success') showToast('✓ Foto banom tersimpan!'); })
                                 .withFailureHandler(function(e){ console.warn('GAS banom URL:', e); })
                                 .saveSetting(fotoKey, imgBase64);
                         } else {
                             // Base64 → simpan ke sheet Photos (chunking otomatis, tidak ada limit)
-                            google.script.run
-                                .withSuccessHandler(function(r2) {
+                            gasCall('withSuccessHandler', function(r2) {
                                     if (r2 === 'success') {
                                         showToast('✓ Banom & foto berhasil disimpan!');
                                     } else {
@@ -3776,15 +3806,14 @@
                 renderAdminNewsTable();
                 syncStateToBackend();
                 // Simpan ke GAS Spreadsheet
-                if (GAS) {
+                if (GAS || GAS_EXTERNAL) {
                     const newsPayload = {
                         title: title, summary: summary, content: content,
                         category: cat, date: new Date().toLocaleDateString('id-ID'),
                         author: author, img: finalImgs[0] || ''
                     };
                     if (_savingNewsId !== null) {
-                        google.script.run
-                            .withSuccessHandler(function(r){
+                        gasCall('withSuccessHandler', function(r){
                                 if(r === 'success') showToast('Berita berhasil diperbarui!');
                                 else if(r === 'not_found') showToast('Gagal: data tidak ditemukan di database. Coba reload halaman.');
                             })
@@ -3792,8 +3821,7 @@
                             .updateNews(String(_savingNewsId), JSON.stringify(newsPayload));
                     } else {
                         // INSERT baru
-                        google.script.run
-                            .withSuccessHandler(function(r){ if(r==='success') showToast('Berita tersimpan ke database!'); })
+                        gasCall('withSuccessHandler', function(r){ if(r==='success') showToast('Berita tersimpan ke database!'); })
                             .withFailureHandler(function(e){ console.warn('addNews GAS:', e); })
                             .addNews(JSON.stringify(newsPayload));
                     }
@@ -3840,9 +3868,8 @@
                     renderNewsList();
                     renderAdminNewsTable();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Berita dihapus dari database.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Berita dihapus dari database.'); })
                             .withFailureHandler(function(e){ console.warn('deleteNews GAS:', e); })
                             .deleteNews(String(id));
                     } else {
@@ -3936,19 +3963,17 @@
             renderAdminFinanceTable();
             syncStateToBackend();
 
-            if (GAS) {
+            if (GAS || GAS_EXTERNAL) {
                 const finPayload = { date: period, description: desc, type: 'laporan', income: income, expense: expense };
                 if (_savingFinanceId !== null) {
-                    google.script.run
-                        .withSuccessHandler(function(r){
+                    gasCall('withSuccessHandler', function(r){
                             if(r === 'success') showToast('Laporan keuangan berhasil diperbarui!');
                             else if(r === 'not_found') showToast('Gagal: data tidak ditemukan di database. Coba reload halaman.');
                         })
                         .withFailureHandler(function(e){ console.warn('updateFinance GAS:', e); })
                         .updateFinance(String(_savingFinanceId), JSON.stringify(finPayload));
                 } else {
-                    google.script.run
-                        .withSuccessHandler(function(r){ if(r==='success') showToast('Laporan tersimpan ke database!'); })
+                    gasCall('withSuccessHandler', function(r){ if(r==='success') showToast('Laporan tersimpan ke database!'); })
                         .withFailureHandler(function(e){ console.warn('addFinance GAS:', e); })
                         .addFinance(JSON.stringify(finPayload));
                 }
@@ -3994,9 +4019,8 @@
                     renderPublicFinanceTable();
                     renderAdminFinanceTable();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Laporan dihapus dari database.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Laporan dihapus dari database.'); })
                             .withFailureHandler(function(e){ console.warn('deleteFinance GAS:', e); })
                             .deleteFinance(String(id));
                     } else {
@@ -4117,15 +4141,14 @@
                 document.getElementById('addPengurusForm').reset();
                 toggleAddPengurusForm();
 
-                if (!GAS) return;
+                if (!GAS && !GAS_EXTERNAL) return;
 
                 // ── Fungsi kirim ke GAS — selalu pakai frozenId, bukan editingPengurusId ──
                 function kirimPengurusKeGAS(urlFoto) {
                     var pPayload = JSON.stringify({ nama: name, jabatan: role, kategori: group, foto: urlFoto });
                     if (frozenId !== null) {
                         // MODE EDIT
-                        google.script.run
-                            .withSuccessHandler(function(r) {
+                        gasCall('withSuccessHandler', function(r) {
                                 if (r === 'success') {
                                     showToast('Foto & data pengurus tersimpan ke Spreadsheet!');
                                     // Update photo di AppState dengan URL final (Drive URL)
@@ -4143,8 +4166,7 @@
                             .updatePengurus(String(frozenId), pPayload);
                     } else {
                         // MODE TAMBAH BARU — gunakan ID yang baru dibuat (unshift pertama)
-                        google.script.run
-                            .withSuccessHandler(function(r){ if(r === 'success') showToast('Pengurus & foto tersimpan!'); })
+                        gasCall('withSuccessHandler', function(r){ if(r === 'success') showToast('Pengurus & foto tersimpan!'); })
                             .withFailureHandler(function(e){ console.warn('addPengurus GAS:', e); })
                             .addPengurus(pPayload);
                     }
@@ -4157,8 +4179,7 @@
                     _kompresUntukDrive(fotoUntukGAS, function(fotoDrive) {
                         if (!fotoDrive) fotoDrive = fotoUntukGAS;
 
-                        google.script.run
-                            .withSuccessHandler(function(driveUrl) {
+                        gasCall('withSuccessHandler', function(driveUrl) {
                                 if (driveUrl && driveUrl.startsWith('https://drive.google.com')) {
                                     // Drive berhasil → URL pendek, foto tajam
                                     var idx4 = AppState.pengurus.findIndex(function(x){ return x.id === frozenId; });
@@ -4171,8 +4192,7 @@
                                 } else {
                                     // Drive gagal → simpan via savePhoto (chunking, tidak kena limit 50K)
                                     var chunkKey = 'pengurus_photo_' + frozenId;
-                                    google.script.run
-                                        .withSuccessHandler(function(r2){
+                                    gasCall('withSuccessHandler', function(r2){
                                             // URL foto adalah referensi ke chunk key
                                             kirimPengurusKeGAS('__chunk__' + chunkKey);
                                         })
@@ -4217,9 +4237,8 @@
                     renderPublicPengurus();
                     renderAdminPengurusTable();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Data pengurus dihapus dari database.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Data pengurus dihapus dari database.'); })
                             .withFailureHandler(function(e){ console.warn('deletePengurus GAS:', e); })
                             .deletePengurus(String(id));
                     } else {
@@ -4302,9 +4321,8 @@
                     AppState.messages = AppState.messages.filter(x => x.id !== id);
                     renderInbox();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Pesan dihapus dari database.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Pesan dihapus dari database.'); })
                             .withFailureHandler(function(e){ console.warn('deleteInbox GAS:', e); })
                             .deleteInbox(String(id));
                     } else {
@@ -4325,10 +4343,9 @@
             AppState.messages.unshift(newMsg);
             if (AppState.isAdminLoggedIn) renderInbox();
 
-            if (GAS) {
+            if (GAS || GAS_EXTERNAL) {
                 const inboxPayload = { nama: name, wa: phone, pesan: category + ': ' + message };
-                google.script.run
-                    .withFailureHandler(function(e){ console.warn('addInbox GAS:', e); })
+                gasCall('withFailureHandler', function(e){ console.warn('addInbox GAS:', e); })
                     .addInbox(JSON.stringify(inboxPayload));
             }
 
@@ -4617,7 +4634,7 @@
             renderSiteSettings();
             syncStateToBackend();
 
-            if (GAS) {
+            if (GAS || GAS_EXTERNAL) {
                 const batchSettings = {
                     'site.runningText':        ss.runningText,
                     'site.runningTextEnabled': String(ss.runningTextEnabled),
@@ -4630,13 +4647,11 @@
                     'site.sosmedYt':           ss.sosmedYt || '#',
                     'site.sosmedIg':           ss.sosmedIg || '#'
                 };
-                google.script.run
-                    .withSuccessHandler(function(r){
+                gasCall('withSuccessHandler', function(r){
                         if (r === 'success') {
                             showToast('✓ Pengaturan situs berhasil disimpan!');
                             if (ss.logoImg) {
-                                google.script.run
-                                    .withSuccessHandler(function(r2){ if(r2==='success') showToast('Logo berhasil tersimpan!'); })
+                                gasCall('withSuccessHandler', function(r2){ if(r2==='success') showToast('Logo berhasil tersimpan!'); })
                                     .withFailureHandler(function(e){ console.warn('GAS logo:', e); })
                                     .saveSettingsBatch(JSON.stringify({ 'site.logoImg': ss.logoImg }));
                             }
@@ -5068,9 +5083,8 @@
 
         // Simpan satu foto galeri baru ke GAS sheet GaleriPhotos
         function _addSatuFotoGaleriKeGAS(item, onDone) {
-            if (!GAS) { if (onDone) onDone(true); return; }
-            google.script.run
-                .withSuccessHandler(function(r) { if (onDone) onDone(r === 'success'); })
+            if (!GAS && !GAS_EXTERNAL) { if (onDone) onDone(true); return; }
+            gasCall('withSuccessHandler', function(r) { if (onDone) onDone(r === 'success'); })
                 .withFailureHandler(function(e) {
                     console.warn('addGaleriPhoto GAS:', e);
                     if (onDone) onDone(false);
@@ -5137,9 +5151,8 @@
                     renderPublicGaleri();
                     renderAdminGaleriGrid();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Foto dihapus dari galeri.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Foto dihapus dari galeri.'); })
                             .withFailureHandler(function(e){ console.warn('deleteGaleriPhoto GAS:', e); showToast('Foto dihapus lokal.'); })
                             .deleteGaleriPhoto(String(targetId));
                     } else {
@@ -5159,9 +5172,8 @@
                     renderPublicGaleri();
                     renderAdminGaleriGrid();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Semua foto galeri dihapus.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Semua foto galeri dihapus.'); })
                             .withFailureHandler(function(e){ console.warn('deleteAllGaleri GAS:', e); })
                             .deleteAllGaleriPhotos();
                     } else {
