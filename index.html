@@ -625,17 +625,8 @@
                             </div>
                         </div>
                         <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Keperluan / Kategori</label>
-                            <select id="contactCategory" class="w-full bg-slate-50 border border-slate-200 focus:border-nuGreen-500 rounded-xl px-4 py-3 text-sm focus:outline-none transition text-slate-800">
-                                <option>Layanan Sosial / LazisNU</option>
-                                <option>Permohonan Pengisi Kajian</option>
-                                <option>Pendaftaran Anggota NU</option>
-                                <option>Pertanyaan Umum</option>
-                            </select>
-                        </div>
-                        <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Isi Pesan</label>
-                            <textarea id="contactMessage" rows="4" required class="w-full bg-slate-50 border border-slate-200 focus:border-nuGreen-500 rounded-xl px-4 py-3 text-sm focus:outline-none transition text-slate-800"></textarea>
+                            <textarea id="contactMessage" rows="5" required placeholder="Tuliskan pesan, pertanyaan, atau keperluan Anda..." class="w-full bg-slate-50 border border-slate-200 focus:border-nuGreen-500 rounded-xl px-4 py-3 text-sm focus:outline-none transition text-slate-800"></textarea>
                         </div>
                         <button type="submit" class="w-full bg-nuGreen-800 hover:bg-nuGreen-900 text-white font-bold py-3.5 rounded-xl shadow-lg transition duration-300 flex items-center justify-center gap-2">
                             <i class="fab fa-whatsapp text-lg"></i>
@@ -1915,83 +1906,6 @@
         </div>
     </div>
 
-    <!-- ============================================================
-         GAS API SHIM
-         Skrip ini membuat ulang antarmuka google.script.run secara
-         manual menggunakan fetch(), supaya HALAMAN INI BISA DI-HOSTING
-         DI LUAR Google Apps Script (GitHub Pages, Vercel, dst) tanpa
-         perlu mengubah kode google.script.run yang sudah ada di bawah.
-
-         CARA PAKAI:
-         1. Deploy Code.gs sebagai Web App di Apps Script
-            (Deploy > New deployment > Web app > Execute as: Me,
-             Who has access: Anyone).
-         2. Salin URL Web App yang dihasilkan (diakhiri /exec).
-         3. Tempel URL tersebut menggantikan nilai GAS_API_URL di bawah.
-    ============================================================ -->
-    <script>
-        // >>> GANTI URL DI BAWAH INI DENGAN URL WEB APP APPS SCRIPT ANDA <<<
-        window.GAS_API_URL = "https://script.google.com/macros/s/AKfycbzYPMyWY0ChkAEmWmUXCEfqz-TuPTuS4Fc8FbBrbcX3d65pp8XB8PACOFFSVxoeEKKM/exec";
-    </script>
-    <script>
-        (function () {
-            var API_URL = window.GAS_API_URL;
-
-            function callBackend(fnName, args, onSuccess, onFail) {
-                if (!API_URL || API_URL.indexOf('PASTE_URL') !== -1) {
-                    console.warn('[GAS Shim] GAS_API_URL belum diatur. Fungsi "' + fnName + '" dibatalkan.');
-                    if (onFail) onFail('GAS_API_URL belum diatur di index.html');
-                    return;
-                }
-                fetch(API_URL, {
-                    method: 'POST',
-                    // Pakai text/plain agar browser TIDAK mengirim preflight OPTIONS
-                    // (Apps Script Web App tidak bisa menjawab preflight CORS).
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ fn: fnName, args: args })
-                })
-                    .then(function (res) { return res.json(); })
-                    .then(function (data) {
-                        if (data && data.ok) {
-                            if (onSuccess) onSuccess(data.result);
-                        } else {
-                            if (onFail) onFail((data && data.error) || 'Unknown error from backend');
-                        }
-                    })
-                    .catch(function (err) {
-                        if (onFail) onFail(err);
-                    });
-            }
-
-            function makeRunner() {
-                var successHandler = function () {};
-                var failureHandler = function (e) { console.warn('GAS error:', e); };
-                var runner = {
-                    withSuccessHandler: function (fn) { successHandler = fn; return runner; },
-                    withFailureHandler: function (fn) { failureHandler = fn; return runner; }
-                };
-                return new Proxy(runner, {
-                    get: function (target, prop) {
-                        if (prop in target) return target[prop];
-                        return function () {
-                            var args = Array.prototype.slice.call(arguments);
-                            callBackend(prop, args, successHandler, failureHandler);
-                            return runner;
-                        };
-                    }
-                });
-            }
-
-            window.google = window.google || {};
-            if (!window.google.script) {
-                Object.defineProperty(window.google, 'script', {
-                    value: { get run() { return makeRunner(); } },
-                    configurable: true
-                });
-            }
-        })();
-    </script>
-
     <script>
         let editingPengurusId = null;
         let editingNewsId = null;
@@ -2335,62 +2249,101 @@
         // Fungsi-fungsi untuk baca/tulis data ke Google Spreadsheet
         // ============================================================
 
+        // ══════════════════════════════════════════════
+        // KONFIGURASI URL GAS — WAJIB DIISI
+        // Salin URL Deploy GAS Anda ke sini
+        // Cara: GAS Editor → Deploy → Manage Deployments → salin Web App URL
+        // ══════════════════════════════════════════════
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbxANGdmx4a_F64k6k7FhAt9FCy-Wo95dvePC2_RhBYP41SSJXDDAvHeFLoNtAjxrNiy/exec';
+        // Contoh: 'https://script.google.com/macros/s/AKfy.../exec'
+
+        // Deteksi environment: true jika di dalam GAS iframe
         const GAS = typeof google !== 'undefined' && google.script && google.script.run;
+        // Mode external fetch: true jika di Vercel/GitHub Pages (bukan di GAS)
+        const GAS_EXTERNAL = !GAS && GAS_URL && GAS_URL !== 'GANTI_DENGAN_URL_GAS_ANDA';
+
+        /**
+         * Panggil fungsi GAS — otomatis pilih mode:
+         * - Di dalam GAS  → google.script.run (cepat, aman)
+         * - Di luar GAS   → fetch GET ke GAS URL dengan parameter action & payload
+         */
+        function gasCall(fnName, payload, onSuccess, onFail) {
+            onSuccess = onSuccess || function(){};
+            onFail    = onFail    || function(e){ console.warn('GAS error:', fnName, e); };
+
+            if (GAS || GAS_EXTERNAL) {
+                // Mode dalam GAS
+                var runner = gasCall('withFailureHandler', onFail, onSuccess);
+                if (payload !== undefined) runner[fnName](payload);
+                else runner[fnName]();
+            } else if (GAS_EXTERNAL) {
+                // Mode external — kirim via fetch POST ke GAS Web App
+                var url = GAS_URL;
+                var body = JSON.stringify({ action: fnName, payload: payload });
+                fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' }, // GAS butuh text/plain untuk doPost
+                    body: body,
+                    redirect: 'follow'
+                })
+                .then(function(r) { return r.text(); })
+                .then(function(text) {
+                    try {
+                        var parsed = JSON.parse(text);
+                        onSuccess(parsed.result !== undefined ? parsed.result : text);
+                    } catch(e) { onSuccess(text); }
+                })
+                .catch(function(e) { onFail(e.message || e); });
+            } else {
+                onFail('GAS tidak tersambung. Isi GAS_URL di kode.');
+            }
+        }
 
         function gasRun(fnName, args, onSuccess, onFail) {
-            if (!GAS) { if (onFail) onFail('Tidak terhubung ke GAS'); return; }
-            let runner = google.script.run
-                .withSuccessHandler(onSuccess || function(){})
-                .withFailureHandler(onFail || function(e){ console.warn('GAS error:', e); });
-            if (args !== undefined) runner[fnName](args);
-            else runner[fnName]();
+            gasCall(fnName, args, onSuccess, onFail);
         }
 
         // Simpan settings ke sheet Settings
         function syncSettings(settingsObj) {
-            if (!GAS) return;
+            if (!GAS && !GAS_EXTERNAL) return;
             const flat = {};
             Object.keys(settingsObj).forEach(function(ns) {
                 Object.keys(settingsObj[ns]).forEach(function(k) {
                     flat[ns + '.' + k] = String(settingsObj[ns][k]);
                 });
             });
-            gasRun('saveSettingsBatch', JSON.stringify(flat), function(res) {
+            gasCall('saveSettingsBatch', JSON.stringify(flat), function(res) {
                 if (res !== 'success') console.warn('saveSettingsBatch:', res);
             });
         }
 
-        // Fungsi utama: simpan perubahan yang relevan ke GAS
         function syncStateToBackend(dataType) {
-            // dataType: 'settings' | 'news' | 'finance' | 'pengurus' | 'inbox' | undefined (semua)
-            // localStorage sebagai cache lokal tetap disimpan
             try {
                 const cacheState = JSON.parse(JSON.stringify(AppState));
                 cacheState.isAdminLoggedIn = false;
                 localStorage.setItem('PRNU_BALEHARJO_STATE_CACHE', JSON.stringify(cacheState));
             } catch(e) {}
-            // Sinkronisasi ke GAS sudah dilakukan secara langsung di masing-masing handler
         }
 
         // Muat semua data dari Spreadsheet GAS
         function loadFromSpreadsheet(callback) {
-            if (!GAS) { callback(null); return; }
-            google.script.run
-                .withSuccessHandler(function(result) {
+            if (!GAS && !GAS_EXTERNAL) { callback(null); return; }
+            gasCall('loadAllData', undefined,
+                function(result) {
                     if (!result) { callback(null); return; }
                     try {
-                        var data = JSON.parse(result);
+                        var data = typeof result === 'string' ? JSON.parse(result) : result;
                         callback(data);
                     } catch(e) {
                         console.error('Parse error loadAllData:', e);
                         callback(null);
                     }
-                })
-                .withFailureHandler(function(e) {
+                },
+                function(e) {
                     console.warn('loadAllData gagal:', e);
                     callback(null);
-                })
-                .loadAllData();
+                }
+            );
         }
 
         // Terapkan data dari Spreadsheet ke AppState
@@ -2562,7 +2515,7 @@
             // Timeout fallback: jika GAS tidak respond dalam 8 detik, tutup splash tetap
             var splashTimeout = setTimeout(function() { hideSplash('Siap'); }, 8000);
 
-            if (GAS) {
+            if (GAS || GAS_EXTERNAL) {
                 var statusEl2 = document.getElementById('splashStatusText');
                 if (statusEl2) statusEl2.textContent = 'Menyinkronkan data…';
 
@@ -2669,7 +2622,7 @@
             renderPengurusHeader();
             syncStateToBackend();
 
-            if (!GAS) { showToast('Info kepengurusan diperbarui!'); return; }
+            if (!GAS && !GAS_EXTERNAL) { showToast('Info kepengurusan diperbarui!'); return; }
 
             var batch = {
                 'pengurus_hdr.tag':        ps.tag,
@@ -2677,8 +2630,7 @@
                 'pengurus_hdr.judul':      ps.judul,
                 'pengurus_hdr.subjudul':   ps.subjudul
             };
-            google.script.run
-                .withSuccessHandler(function(r){
+            gasCall('withSuccessHandler', function(r){
                     if (r === 'success') showToast('✓ Info & masa jabatan kepengurusan tersimpan!');
                     else showToast('⚠️ Gagal: ' + r);
                 })
@@ -2700,19 +2652,6 @@
             setEl('pubKontakMapsSubLabel', ks.mapsSubLabel);
             const mapsLink = document.getElementById('pubKontakMapsUrl');
             if (mapsLink && ks.mapsUrl) mapsLink.href = ks.mapsUrl;
-
-            // Update dropdown kategori
-            const sel = document.getElementById('contactCategory');
-            if (sel && ks.kategoriList && ks.kategoriList.length) {
-                const cats = Array.isArray(ks.kategoriList) ? ks.kategoriList : String(ks.kategoriList).split(',').map(s => s.trim());
-                sel.innerHTML = cats.map(c => `<option>${c}</option>`).join('');
-            }
-
-            // Update WA button action
-            const form = document.getElementById('contactForm');
-            if (form) {
-                form._waNumber = ks.waNumber || '6282327603545';
-            }
         }
 
         // Isi form admin Kelola Kontak dengan data AppState
@@ -2755,7 +2694,7 @@
             renderKontakContent();
             syncStateToBackend();
 
-            if (!GAS) { showToast('Kontak diperbarui (mode lokal)!'); return; }
+            if (!GAS && !GAS_EXTERNAL) { showToast('Kontak diperbarui (mode lokal)!'); return; }
 
             var batch = {
                 'kontak.judulForm':       ks.judulForm,
@@ -2772,8 +2711,7 @@
                 'kontak.kategoriList':    JSON.stringify(ks.kategoriList)
             };
 
-            google.script.run
-                .withSuccessHandler(function(r) {
+            gasCall('withSuccessHandler', function(r) {
                     if (r === 'success') showToast('✓ Pengaturan Kontak berhasil disimpan!');
                     else showToast('⚠️ Gagal simpan: ' + r);
                 })
@@ -3305,21 +3243,21 @@
                 submitBtn.innerHTML = `<span>Masuk ke Dashboard</span>`;
             };
 
-            if (typeof google !== 'undefined' && google.script && google.script.run) {
-                google.script.run.withSuccessHandler(function(isValid) {
-                    if (isValid) {
-                        successAuth();
-                    } else {
-                        failAuth();
+            if (GAS || GAS_EXTERNAL) {
+                gasCall('checkAdminCredentials', user + '|||' + pass,
+                    function(isValid) {
+                        if (isValid === true || isValid === 'true') { successAuth(); }
+                        else { failAuth(); }
+                    },
+                    function() {
+                        // Failback lokal jika GAS tidak merespons
+                        if (user === 'admin' && (pass === 'aswaja1926' || pass === 'admin')) {
+                            successAuth();
+                        } else {
+                            failAuth();
+                        }
                     }
-                }).withFailureHandler(function() {
-                    // Failback local
-                    if (user === 'admin' && (pass === 'aswaja1926' || pass === 'admin')) {
-                        successAuth();
-                    } else {
-                        failAuth();
-                    }
-                }).checkAdminCredentials(user, pass);
+                );
             } else {
                 if (user === 'admin' && (pass === 'aswaja1926' || pass === 'admin')) {
                     successAuth();
@@ -3463,7 +3401,7 @@
             renderHomepageContent();
             syncStateToBackend();
             // Simpan ke GAS Spreadsheet Sheet Settings
-            if (GAS) {
+            if (GAS || GAS_EXTERNAL) {
                 const settingsBatch = {
                     'homepage.heroTitle': AppState.homepageSettings.heroTitle,
                     'homepage.heroSubtitle': AppState.homepageSettings.heroSubtitle,
@@ -3472,8 +3410,7 @@
                     'homepage.agendaTitle': AppState.homepageSettings.agendaTitle,
                     'homepage.agendaLocation': AppState.homepageSettings.agendaLocation
                 };
-                google.script.run
-                    .withSuccessHandler(function(r){ if(r==='success') showToast('Beranda tersimpan ke Spreadsheet!'); })
+                gasCall('withSuccessHandler', function(r){ if(r==='success') showToast('Beranda tersimpan ke Spreadsheet!'); })
                     .withFailureHandler(function(e){ console.warn('saveSettings GAS:', e); })
                     .saveSettingsBatch(JSON.stringify(settingsBatch));
             }
@@ -3514,7 +3451,7 @@
             renderProfileContent();
             syncStateToBackend();
 
-            if (!GAS) { showToast('Profil diperbarui (mode lokal)!'); return; }
+            if (!GAS && !GAS_EXTERNAL) { showToast('Profil diperbarui (mode lokal)!'); return; }
 
             // ── STEP 1: Simpan data teks (tanpa foto) ──
             var batchTeks = {
@@ -3531,8 +3468,7 @@
                 'profile.fokus':            JSON.stringify(ps.fokus)
             };
 
-            google.script.run
-                .withSuccessHandler(function(r) {
+            gasCall('withSuccessHandler', function(r) {
                     if (r !== 'success') { showToast('⚠️ Gagal simpan data: ' + r); return; }
 
                     var fotoSrc = ps.profilImg || '';
@@ -3541,8 +3477,7 @@
                     // ── STEP 2: Simpan foto via savePhoto (chunking otomatis di GAS) ──
                     // savePhoto memecah base64 besar menjadi chunks < 44KB per cell
                     // getSettings() otomatis menggabungkan kembali saat web dibuka
-                    google.script.run
-                        .withSuccessHandler(function(r2) {
+                    gasCall('withSuccessHandler', function(r2) {
                             if (r2 === 'success') showToast('✓ Profil & foto berhasil disimpan!');
                             else showToast('⚠️ Foto gagal: ' + r2);
                         })
@@ -3665,9 +3600,8 @@
                 
                 renderPublicLayanan();
                 syncStateToBackend();
-                if (GAS) {
-                    google.script.run
-                        .withSuccessHandler(function(r){ if(r==='success') showToast('Data layanan tersimpan ke database!'); })
+                if (GAS || GAS_EXTERNAL) {
+                    gasCall('withSuccessHandler', function(r){ if(r==='success') showToast('Data layanan tersimpan ke database!'); })
                         .withFailureHandler(function(e){ console.warn('GAS layanan:', e); })
                         .saveSettingsBatch(JSON.stringify({ 'site.layanan': JSON.stringify(AppState.layanan) }));
                 } else {
@@ -3703,7 +3637,7 @@
             function saveBanomToGAS(imgBase64) {
                 renderPublicBanom();
                 syncStateToBackend();
-                if (!GAS) { showToast('Banom berhasil diperbarui!'); return; }
+                if (!GAS && !GAS_EXTERNAL) { showToast('Banom berhasil diperbarui!'); return; }
 
                 // ── STEP 1: Simpan data teks (tanpa foto) ──
                 var banomsTeks = {};
@@ -3716,8 +3650,7 @@
                     };
                 });
 
-                google.script.run
-                    .withSuccessHandler(function(r) {
+                gasCall('withSuccessHandler', function(r) {
                         if (r !== 'success') { showToast('⚠️ Gagal simpan data banom: ' + r); return; }
 
                         if (!imgBase64) { showToast('✓ Data banom tersimpan!'); return; }
@@ -3728,14 +3661,12 @@
 
                         if (imgBase64.startsWith('http')) {
                             // URL langsung → simpan di Settings biasa (pendek, aman)
-                            google.script.run
-                                .withSuccessHandler(function(r2){ if(r2==='success') showToast('✓ Foto banom tersimpan!'); })
+                            gasCall('withSuccessHandler', function(r2){ if(r2==='success') showToast('✓ Foto banom tersimpan!'); })
                                 .withFailureHandler(function(e){ console.warn('GAS banom URL:', e); })
                                 .saveSetting(fotoKey, imgBase64);
                         } else {
                             // Base64 → simpan ke sheet Photos (chunking otomatis, tidak ada limit)
-                            google.script.run
-                                .withSuccessHandler(function(r2) {
+                            gasCall('withSuccessHandler', function(r2) {
                                     if (r2 === 'success') {
                                         showToast('✓ Banom & foto berhasil disimpan!');
                                     } else {
@@ -3853,15 +3784,14 @@
                 renderAdminNewsTable();
                 syncStateToBackend();
                 // Simpan ke GAS Spreadsheet
-                if (GAS) {
+                if (GAS || GAS_EXTERNAL) {
                     const newsPayload = {
                         title: title, summary: summary, content: content,
                         category: cat, date: new Date().toLocaleDateString('id-ID'),
                         author: author, img: finalImgs[0] || ''
                     };
                     if (_savingNewsId !== null) {
-                        google.script.run
-                            .withSuccessHandler(function(r){
+                        gasCall('withSuccessHandler', function(r){
                                 if(r === 'success') showToast('Berita berhasil diperbarui!');
                                 else if(r === 'not_found') showToast('Gagal: data tidak ditemukan di database. Coba reload halaman.');
                             })
@@ -3869,8 +3799,7 @@
                             .updateNews(String(_savingNewsId), JSON.stringify(newsPayload));
                     } else {
                         // INSERT baru
-                        google.script.run
-                            .withSuccessHandler(function(r){ if(r==='success') showToast('Berita tersimpan ke database!'); })
+                        gasCall('withSuccessHandler', function(r){ if(r==='success') showToast('Berita tersimpan ke database!'); })
                             .withFailureHandler(function(e){ console.warn('addNews GAS:', e); })
                             .addNews(JSON.stringify(newsPayload));
                     }
@@ -3917,9 +3846,8 @@
                     renderNewsList();
                     renderAdminNewsTable();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Berita dihapus dari database.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Berita dihapus dari database.'); })
                             .withFailureHandler(function(e){ console.warn('deleteNews GAS:', e); })
                             .deleteNews(String(id));
                     } else {
@@ -4013,19 +3941,17 @@
             renderAdminFinanceTable();
             syncStateToBackend();
 
-            if (GAS) {
+            if (GAS || GAS_EXTERNAL) {
                 const finPayload = { date: period, description: desc, type: 'laporan', income: income, expense: expense };
                 if (_savingFinanceId !== null) {
-                    google.script.run
-                        .withSuccessHandler(function(r){
+                    gasCall('withSuccessHandler', function(r){
                             if(r === 'success') showToast('Laporan keuangan berhasil diperbarui!');
                             else if(r === 'not_found') showToast('Gagal: data tidak ditemukan di database. Coba reload halaman.');
                         })
                         .withFailureHandler(function(e){ console.warn('updateFinance GAS:', e); })
                         .updateFinance(String(_savingFinanceId), JSON.stringify(finPayload));
                 } else {
-                    google.script.run
-                        .withSuccessHandler(function(r){ if(r==='success') showToast('Laporan tersimpan ke database!'); })
+                    gasCall('withSuccessHandler', function(r){ if(r==='success') showToast('Laporan tersimpan ke database!'); })
                         .withFailureHandler(function(e){ console.warn('addFinance GAS:', e); })
                         .addFinance(JSON.stringify(finPayload));
                 }
@@ -4071,9 +3997,8 @@
                     renderPublicFinanceTable();
                     renderAdminFinanceTable();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Laporan dihapus dari database.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Laporan dihapus dari database.'); })
                             .withFailureHandler(function(e){ console.warn('deleteFinance GAS:', e); })
                             .deleteFinance(String(id));
                     } else {
@@ -4194,15 +4119,14 @@
                 document.getElementById('addPengurusForm').reset();
                 toggleAddPengurusForm();
 
-                if (!GAS) return;
+                if (!GAS && !GAS_EXTERNAL) return;
 
                 // ── Fungsi kirim ke GAS — selalu pakai frozenId, bukan editingPengurusId ──
                 function kirimPengurusKeGAS(urlFoto) {
                     var pPayload = JSON.stringify({ nama: name, jabatan: role, kategori: group, foto: urlFoto });
                     if (frozenId !== null) {
                         // MODE EDIT
-                        google.script.run
-                            .withSuccessHandler(function(r) {
+                        gasCall('withSuccessHandler', function(r) {
                                 if (r === 'success') {
                                     showToast('Foto & data pengurus tersimpan ke Spreadsheet!');
                                     // Update photo di AppState dengan URL final (Drive URL)
@@ -4220,8 +4144,7 @@
                             .updatePengurus(String(frozenId), pPayload);
                     } else {
                         // MODE TAMBAH BARU — gunakan ID yang baru dibuat (unshift pertama)
-                        google.script.run
-                            .withSuccessHandler(function(r){ if(r === 'success') showToast('Pengurus & foto tersimpan!'); })
+                        gasCall('withSuccessHandler', function(r){ if(r === 'success') showToast('Pengurus & foto tersimpan!'); })
                             .withFailureHandler(function(e){ console.warn('addPengurus GAS:', e); })
                             .addPengurus(pPayload);
                     }
@@ -4234,8 +4157,7 @@
                     _kompresUntukDrive(fotoUntukGAS, function(fotoDrive) {
                         if (!fotoDrive) fotoDrive = fotoUntukGAS;
 
-                        google.script.run
-                            .withSuccessHandler(function(driveUrl) {
+                        gasCall('withSuccessHandler', function(driveUrl) {
                                 if (driveUrl && driveUrl.startsWith('https://drive.google.com')) {
                                     // Drive berhasil → URL pendek, foto tajam
                                     var idx4 = AppState.pengurus.findIndex(function(x){ return x.id === frozenId; });
@@ -4248,8 +4170,7 @@
                                 } else {
                                     // Drive gagal → simpan via savePhoto (chunking, tidak kena limit 50K)
                                     var chunkKey = 'pengurus_photo_' + frozenId;
-                                    google.script.run
-                                        .withSuccessHandler(function(r2){
+                                    gasCall('withSuccessHandler', function(r2){
                                             // URL foto adalah referensi ke chunk key
                                             kirimPengurusKeGAS('__chunk__' + chunkKey);
                                         })
@@ -4294,9 +4215,8 @@
                     renderPublicPengurus();
                     renderAdminPengurusTable();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Data pengurus dihapus dari database.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Data pengurus dihapus dari database.'); })
                             .withFailureHandler(function(e){ console.warn('deletePengurus GAS:', e); })
                             .deletePengurus(String(id));
                     } else {
@@ -4379,9 +4299,8 @@
                     AppState.messages = AppState.messages.filter(x => x.id !== id);
                     renderInbox();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Pesan dihapus dari database.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Pesan dihapus dari database.'); })
                             .withFailureHandler(function(e){ console.warn('deleteInbox GAS:', e); })
                             .deleteInbox(String(id));
                     } else {
@@ -4393,32 +4312,29 @@
 
         window.handleContactSubmit = function(event) {
             event.preventDefault();
-            const name     = document.getElementById('contactName').value;
-            const phone    = document.getElementById('contactPhone').value;
-            const category = document.getElementById('contactCategory').value;
-            const message  = document.getElementById('contactMessage').value;
+            const name    = document.getElementById('contactName').value;
+            const phone   = document.getElementById('contactPhone').value;
+            const message = document.getElementById('contactMessage').value;
 
-            const newMsg = { id: Date.now(), sender: name, phone, category, message };
+            const newMsg = { id: Date.now(), sender: name, phone, category: 'Pesan', message };
             AppState.messages.unshift(newMsg);
             if (AppState.isAdminLoggedIn) renderInbox();
 
-            if (GAS) {
-                const inboxPayload = { nama: name, wa: phone, pesan: category + ': ' + message };
-                google.script.run
-                    .withFailureHandler(function(e){ console.warn('addInbox GAS:', e); })
-                    .addInbox(JSON.stringify(inboxPayload));
+            if (GAS || GAS_EXTERNAL) {
+                const inboxPayload = JSON.stringify({ nama: name, wa: phone, pesan: message });
+                gasCall('addInbox', inboxPayload, null,
+                    function(e){ console.warn('addInbox GAS:', e); });
             }
 
-            // Gunakan nomor WA dari AppState.kontakSettings
             const waNum  = (AppState.kontakSettings && AppState.kontakSettings.waNumber) || '6282327603545';
             const waText = encodeURIComponent(
-                `Assalamualaikum Pengurus NU Baleharjo,\n\nMasyarakat mengirim pesan melalui website:\nNama: ${name}\nHP: ${phone}\nKeperluan: ${category}\nPesan: ${message}`
+                `Assalamualaikum Pengurus NU Baleharjo,\n\nMasyarakat mengirim pesan melalui website:\nNama: ${name}\nHP: ${phone}\nPesan: ${message}`
             );
             window.open(`https://api.whatsapp.com/send?phone=${waNum}&text=${waText}`, '_blank');
 
             document.getElementById('contactForm').reset();
             syncStateToBackend();
-            showToast("Pesan Anda tercatat dan diarahkan ke WhatsApp Pengurus!");
+            showToast("Pesan Anda diarahkan ke WhatsApp Pengurus!");
         };
 
         window.openDonationModal = function() {
@@ -4694,7 +4610,7 @@
             renderSiteSettings();
             syncStateToBackend();
 
-            if (GAS) {
+            if (GAS || GAS_EXTERNAL) {
                 const batchSettings = {
                     'site.runningText':        ss.runningText,
                     'site.runningTextEnabled': String(ss.runningTextEnabled),
@@ -4707,13 +4623,11 @@
                     'site.sosmedYt':           ss.sosmedYt || '#',
                     'site.sosmedIg':           ss.sosmedIg || '#'
                 };
-                google.script.run
-                    .withSuccessHandler(function(r){
+                gasCall('withSuccessHandler', function(r){
                         if (r === 'success') {
                             showToast('✓ Pengaturan situs berhasil disimpan!');
                             if (ss.logoImg) {
-                                google.script.run
-                                    .withSuccessHandler(function(r2){ if(r2==='success') showToast('Logo berhasil tersimpan!'); })
+                                gasCall('withSuccessHandler', function(r2){ if(r2==='success') showToast('Logo berhasil tersimpan!'); })
                                     .withFailureHandler(function(e){ console.warn('GAS logo:', e); })
                                     .saveSettingsBatch(JSON.stringify({ 'site.logoImg': ss.logoImg }));
                             }
@@ -5145,9 +5059,8 @@
 
         // Simpan satu foto galeri baru ke GAS sheet GaleriPhotos
         function _addSatuFotoGaleriKeGAS(item, onDone) {
-            if (!GAS) { if (onDone) onDone(true); return; }
-            google.script.run
-                .withSuccessHandler(function(r) { if (onDone) onDone(r === 'success'); })
+            if (!GAS && !GAS_EXTERNAL) { if (onDone) onDone(true); return; }
+            gasCall('withSuccessHandler', function(r) { if (onDone) onDone(r === 'success'); })
                 .withFailureHandler(function(e) {
                     console.warn('addGaleriPhoto GAS:', e);
                     if (onDone) onDone(false);
@@ -5214,9 +5127,8 @@
                     renderPublicGaleri();
                     renderAdminGaleriGrid();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Foto dihapus dari galeri.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Foto dihapus dari galeri.'); })
                             .withFailureHandler(function(e){ console.warn('deleteGaleriPhoto GAS:', e); showToast('Foto dihapus lokal.'); })
                             .deleteGaleriPhoto(String(targetId));
                     } else {
@@ -5236,9 +5148,8 @@
                     renderPublicGaleri();
                     renderAdminGaleriGrid();
                     syncStateToBackend();
-                    if (GAS) {
-                        google.script.run
-                            .withSuccessHandler(function(r){ showToast('Semua foto galeri dihapus.'); })
+                    if (GAS || GAS_EXTERNAL) {
+                        gasCall('withSuccessHandler', function(r){ showToast('Semua foto galeri dihapus.'); })
                             .withFailureHandler(function(e){ console.warn('deleteAllGaleri GAS:', e); })
                             .deleteAllGaleriPhotos();
                     } else {
